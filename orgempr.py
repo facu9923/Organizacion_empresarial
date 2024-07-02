@@ -7,6 +7,7 @@ import requests
 import io  # Para trabajar con archivos en memoria
 from PIL import Image  # Para manejar imágenes en memoria
 from urllib.parse import urlparse
+import matplotlib.patches as mpatches
 
 # Deshabilitar los avisos de FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -47,6 +48,11 @@ def send_message_with_image_to_telegram(message, image_path, chat_id, token):
     files['photo'].close()
     return response.json()
 
+def plot_colored_line(x, y):
+    colors = ['g' if y[i] >= y[i-1] else 'r' for i in range(1, len(y))]
+    for i in range(len(colors)):
+        plt.plot(x[i:i+2], y[i:i+2], color=colors[i])
+
 # Configuración inicial
 modecompra = True
 entrada = 0
@@ -55,6 +61,7 @@ df = get_data('historical_data.csv')
 saldo_inicial = 100  # Saldo inicial
 saldo_actual = saldo_inicial  # Saldo actual, se actualiza durante el backtesting
 compr= 0
+fechacompra = 0
 # Realiza el backtesting
 print("Inicia backtesting:")
 for index, row in df.iterrows():
@@ -72,22 +79,24 @@ for index, row in df.iterrows():
             plot_data = df.loc[:row.name]
             
             # Graficar el precio actual con la señal de compra
-            plt.figure(figsize=(10, 6))
-            plt.plot(plot_data.index, plot_data['Close'], label='Precio de Cierre')
-            plt.scatter(row.name, row['Close'], marker='^', color='g', s=100, label='Compra')  # Marcador de compra más grande (s=100)
-            plt.title('Compra realizada ' + str(row['Close']))
-            plt.xlabel('Fecha')
-            plt.ylabel('Precio')
-            plt.legend()
-            plt.grid(True)
+            fig, ax = plt.subplots(figsize=(10, 6))
+            plot_colored_line(plot_data.index, plot_data['Close'])
+            ax.scatter(row.name, row['Close'], marker='^', color='g', s=100, label='Compra', zorder=5)  # Marcador de compra más grande (s=100)
+            ax.set_title('Compra realizada ' + str(row['Close']), color='white')
+            ax.set_xlabel('Fecha', color='white')
+            ax.set_ylabel('Precio', color='white')
+            ax.legend()
+            ax.grid(True, color='white', alpha=0.1)
+            ax.set_facecolor('black')
+            ax.tick_params(colors='white')
             nombr = row.name
-            
+            fechacompra = index
             # Guardar el gráfico temporalmente como archivo
             image_path = 'chart.png'  # Ruta relativa o absoluta válida en Windows
-            plt.savefig(image_path)
+            plt.savefig(image_path, facecolor='black', bbox_inches='tight', pad_inches=0)
             plt.close()  # Cerrar la figura para liberar memoria
             
-            send_message_with_image_to_telegram('🟢🟢🟢 Compra realizada: ' + str(row['Close']) + ' 🟢🟢🟢', image_path, '@orgempresarialbot', '6403909179:AAHYPFEsjp6Hj7t3o8_Wwzrcn55unSMZLfc')            
+            send_message_with_image_to_telegram('🟢🟢🟢 Compra realizada: ' + str(row['Close']) + ' 🟢🟢🟢', image_path, '@orgempresarialbot', '6403909179:AAHYPFEsjp6Hj7t3o8_Wwzrcn55unSMZLfc')                
                         
         # Verifica si se debe realizar una venta
         elif (precio_actual < entrada * 0.97 or (precio_actual > entrada * 1.01 and exit_rulersi(data))) and not modecompra:
@@ -96,29 +105,32 @@ for index, row in df.iterrows():
             saldo_actual += row['Close'] * 0.999  # Suma el precio de venta al saldo
             operaciones += 1
             ganancia = (row['Close'] * 0.999)- entrada
-            
+            if(ganancia > 0):
+                respuesta= "Ganancia"
+            else:
+                respuesta= "Perdida"
             plot_data = df.loc[:row.name]
             
             # Graficar el precio actual con la señal de venta y el marcador de compra
-            plt.figure(figsize=(10, 6))
-            plt.plot(plot_data.index, plot_data['Close'], label='Precio de Cierre')
-            plt.scatter(row.name, row['Close'], marker='v', color='r', s=100, label=f'Venta, ganancia: {ganancia:.2f}')  # Marcador de venta más grande (s=100)
-            plt.scatter(nombr, entrada, marker='^', color='g', s=100, label='Compra')  # Mostrar el marcador de compra también
-            plt.title(f'Venta realizada, ganancia: {ganancia:.2f}')
-            plt.xlabel('Fecha')
-            plt.ylabel('Precio')
-            plt.legend()
-            plt.grid(True)
-            
-            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            plot_colored_line(plot_data.index, plot_data['Close'])
+            ax.scatter(row.name, row['Close'], marker='v', color='r', s=100, label='Venta', zorder=5)  # Marcador de venta más grande (s=100)
+            ax.scatter(nombr, entrada, marker='^', color='g', s=100, label=f'Compra, {fechacompra}', zorder=5)  # Mostrar el marcador de compra también
+            ax.set_title(f'Venta realizada, {respuesta}: {ganancia:.2f}', color='white')
+            ax.set_xlabel('Fecha', color='white')
+            ax.set_ylabel('Precio', color='white')
+            ax.legend()
+            ax.grid(True, color='white', alpha=0.1)
+            ax.set_facecolor('black')
+            ax.tick_params(colors='white')
             
             # Guardar el gráfico temporalmente como archivo
             image_path = 'chart.png'  # Ruta relativa o absoluta válida en Windows
-            plt.savefig(image_path)
+            plt.savefig(image_path, facecolor='black', bbox_inches='tight', pad_inches=0)
             plt.close()  # Cerrar la figura para liberar memoria
             
             # Enviar la imagen a Telegram
-            send_message_with_image_to_telegram('🔴🔴🔴 Venta realizada: ' + str(row['Close']) + ' 🔴🔴🔴', image_path, '@orgempresarialbot', '6403909179:AAHYPFEsjp6Hj7t3o8_Wwzrcn55unSMZLfc')
+            send_message_with_image_to_telegram('🔴🔴🔴 Venta realizada: ' + str(row['Close']) + ' 🔴🔴🔴', image_path, '@orgempresarialbot', '6403909179:AAHYPFEsjp6Hj7t3o8_Wwzrcn55unSMZLfc')    
 
 # Calcular ganancia total
 ganancia_total = saldo_actual - saldo_inicial
